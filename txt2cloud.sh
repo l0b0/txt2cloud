@@ -45,7 +45,7 @@
 ################################################################################
 
 PATH='/usr/bin:/bin'
-cmdname=$(basename $0)
+cmdname="$(basename -- "$0")"
 
 # Exit codes from /usr/include/sysexits.h, as recommended by
 # http://www.faqs.org/docs/abs/HTML/exitcodes.html
@@ -73,9 +73,9 @@ error()
 usage()
 {
     # Print documentation until the first empty line
-    while read line
+    while read -r line
     do
-        if [ ! "$line" ]
+        if [ -z "$line" ]
         then
             exit $EX_USAGE
         fi
@@ -115,7 +115,8 @@ do
             max=$2
             shift 2
             ;;
-        --) shift
+        --)
+            shift
             break
             ;;
         *)

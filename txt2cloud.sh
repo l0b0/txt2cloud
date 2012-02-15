@@ -1,46 +1,53 @@
 #!/bin/sh
 #
 # NAME
-#    txt2cloud.sh - Create XHTML tag cloud page from text file
+#        txt2cloud.sh - Create XHTML tag cloud page from text file
 #
 # SYNOPSIS
-#    txt2cloud.sh [OPTIONS] < file
-#
-# OPTIONS
-#    -c, --case-sensitive       Case sensitive
-#    -d, --delimiters=DELIMS    Word delimiters (regular expression)
-#    -m, --min=COUNT            Minimum word count to be included in output
-#    -x, --max=COUNT            Maximum word count to be included in output
-#
-# EXAMPLES
-#    txt2cloud.sh < book.txt > cloud.xhtml
-#        Create tag cloud of book.txt in cloud.xhtml
-#
-#    txt2cloud.sh -m3 < txt2cloud.sh > cloud.xhtml
-#        Create tag cloud of the important words in this script
+#        txt2cloud.sh [OPTIONS] [--] [PATH ...]
 #
 # DESCRIPTION
-#    Splits the text into words, sorts them, and outputs a page with the
-#    font size according to the frequency.
+#        Splits the text into words using the $IFS characters as the
+#        separator(s), sorts them, and outputs a page with the font size
+#        according to the frequency.
+#
+#        -c, --case-sensitive
+#              Case sensitive
+#
+#        -i, --case-insensitive
+#              Case insensitive (default)
+#
+#        -m, --min=COUNT
+#              Minimum word count to be included in output
+#
+#        -M, --max=COUNT
+#              Maximum word count to be included in output
+#
+# EXAMPLES
+#        ./txt2cloud.sh book.txt > cloud.xhtml
+#              Create tag cloud of book.txt in cloud.xhtml
+#
+#        ./txt2cloud.sh -m3 txt2cloud.sh > cloud.xhtml
+#              Create tag cloud of the important words in this script
 #
 # BUGS
-#    Email bugs to victor dot engmark at gmail dot com.
+#        https://github.com/l0b0/txt2cloud/issues
 #
 # COPYRIGHT AND LICENSE
-#    Copyright (C) 2010 Victor Engmark
+#        Copyright (C) 2010-2012 Victor Engmark
 #
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
+#        This program is free software: you can redistribute it and/or modify
+#        it under the terms of the GNU General Public License as published by
+#        the Free Software Foundation, either version 3 of the License, or
+#        (at your option) any later version.
 #
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
+#        This program is distributed in the hope that it will be useful,
+#        but WITHOUT ANY WARRANTY; without even the implied warranty of
+#        MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#        GNU General Public License for more details.
 #
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#        You should have received a copy of the GNU General Public License
+#        along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ################################################################################
 
@@ -84,7 +91,7 @@ usage()
 }
 
 # Process parameters
-params=$(getopt -o cd:m:x: -l case-sensitive,delimiters:,min:,max: --name $cmdname -- "$@")
+params="$(getopt -o cim:M: -l case-sensitive,case-insensitive,min:,max: --name "$cmdname" -- "$@")"
 if [ $? -ne 0 ]
 then
     usage
@@ -92,10 +99,6 @@ fi
 
 eval set -- "$params"
 
-case_sensitive=0
-delimiters='[:punct:][:space:]'
-min=1
-max=0
 while true
 do
     case $1 in
@@ -103,15 +106,15 @@ do
             case_sensitive=1
             shift
             ;;
-        -d|--delimiters)
-            delimiters=$2
-            shift 2
+        -i|--case-insensitive)
+            unset case_sensitive
+            shift
             ;;
         -m|--min)
             min=$2
             shift 2
             ;;
-        -x|--max)
+        -M|--max)
             max=$2
             shift 2
             ;;
@@ -134,24 +137,26 @@ echo '</head>'
 echo '<body>'
 echo '<div class="cloud">'
 
-tr -s "$delimiters" \\n > /tmp/words
-if [ $case_sensitive -eq 0 ]
-then
-    awk '{print tolower($0)}' < /tmp/words > /tmp/words_lower
-    mv /tmp/words_lower /tmp/words
-fi
-sort -o /tmp/words_sorted /tmp/words
-if [ $min -ge 2 ]
-then
-    # Exclude unique words
-    uniq -cd < /tmp/words_sorted > /tmp/words_counts
-else
-    uniq -c < /tmp/words_sorted > /tmp/words_counts
-fi
+set_case() {
+    if [ "${case_sensitive-undefined}" = undefined ]
+    then
+        awk '{print tolower($0)}'
+    fi
+}
+
+count_unique() {
+    if [ ${min-0} -ge 2 ]
+    then
+        # Exclude unique words as early as possible
+        uniq -cd
+    else
+        uniq -c
+    fi
+}
 
 check_min()
 {
-    if [ $1 -lt $min ]
+    if [ $1 -lt ${min-0} ]
     then
         continue
     fi
@@ -159,7 +164,7 @@ check_min()
 
 check_max()
 {
-    if [ $1 -gt $max ]
+    if [ $1 -gt ${max-$1} ]
     then
         continue
     fi
@@ -171,32 +176,32 @@ check_min_max()
     check_max $1
 }
 
-if [ $min -gt 1 -a $max -gt 0 ]
+if [ ${min-0} -gt 1 -a ${max-0} -gt 0 ]
 then
     check_count='check_min_max'
-elif [ $min -gt 1 ]
+elif [ ${min-0} -gt 1 ]
 then
     check_count='check_min'
-elif [ $max -gt 0 ]
+elif [ ${max-0} -gt 0 ]
 then
     check_count='check_max'
 else
     check_count='test'
 fi
 
-while read -r count word
+cat "$@" | tr -s "$IFS" \\n | sort | set_case | count_unique | while read -r count word
 do
     $check_count $count
 
     # Font size (minimum 1)
-    size=$(echo "l(${count} - ${min} + 1) + 1" | bc -l)
+    size=$(echo "l(${count} - ${min-0} + 1) + 1" | bc -l)
 
     # Escape XML
     output=$(echo "$word" | sed s/\&/\\\&amp\;/g\;s/\</\\\&lt\;/g\;s/\>/\\\&gt\;/g)
 
     # Output
     echo -n "<span style='font-size:${size}em'>${output}</span> "
-done < /tmp/words_counts
+done
 
 echo '</div>'
 echo '</body>'
